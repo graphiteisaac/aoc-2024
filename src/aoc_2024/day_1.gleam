@@ -4,23 +4,19 @@ import gleam/result
 import gleam/string
 
 // Expects both lists to be sorted
-fn solve_part_one(left: List(Int), right: List(Int), dist: Int) {
+fn solve_part_one(left: List(Int), right: List(Int), distance_accumulator: Int) {
   case left {
     [first, ..rest] -> {
       let right_remaining = list.rest(right) |> result.unwrap([])
-      solve_part_one(rest, right_remaining, {
-        dist
-        + {
-          int.subtract(
-            first,
-            list.first(right)
-              |> result.unwrap(0),
-          )
-          |> int.absolute_value
-        }
-      })
+      let right_value = list.first(right) |> result.unwrap(0)
+      let distance =
+        first
+        |> int.subtract(right_value)
+        |> int.absolute_value
+
+      solve_part_one(rest, right_remaining, { distance_accumulator + distance })
     }
-    _ -> dist
+    _ -> distance_accumulator
   }
 }
 
