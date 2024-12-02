@@ -3,28 +3,19 @@ import gleam/int
 import gleam/list
 import gleam/result
 import gleam/string
+import utils
 
-pub fn pt_1(input: String) {
-  input
-  |> string.split("\n")
-  |> list.filter(fn(report) {
-    let numbers =
-      report
-      |> string.split(" ")
-      |> list.map(fn(str) { int.parse(str) |> result.unwrap(0) })
+fn is_safe(numbers: List(Int)) -> Bool {
+  let differences =
+    numbers
+    |> list.window_by_2
+    |> list.map(fn(window) { window.0 - window.1 })
 
-    let increments = list.zip(numbers, list.drop(numbers, 1))
-    let differences = list.map(increments, fn(inc) { inc.0 - inc.1 })
-
-    list.all(differences, fn(difference) { difference <= 3 && difference >= 1 })
-    || list.all(differences, fn(difference) {
-      difference <= -1 && difference >= -3
-    })
-  })
-  |> list.length
+  list.all(differences, fn(num) { num <= 3 && num >= 1 })
+  || list.all(differences, fn(num) { num <= -1 && num >= -3 })
 }
 
-pub fn pt_2(input: String) {
+pub fn pt_1(input: String) {
   input
   |> string.split("\n")
   |> list.filter_map(fn(report) {
@@ -33,25 +24,35 @@ pub fn pt_2(input: String) {
       |> string.split(" ")
       |> list.map(fn(str) { int.parse(str) |> result.unwrap(0) })
 
-    let increments = list.zip(numbers, list.drop(numbers, 1))
-    let differences = list.map(increments, fn(inc) { inc.0 - inc.1 })
-
-    case
-      differences
-      |> list.filter_map(fn(difference) {
-        use <- bool.guard(
-          { difference <= 3 && difference >= 1 }
-            || { difference <= -1 && difference >= -3 },
-          return: Ok(True),
-        )
-
-        Error(Nil)
-      })
-      |> list.length
-    {
-      0 | 1 -> Ok(True)
-      _ -> Error(Nil)
+    case is_safe(numbers) {
+      True -> Ok(Nil)
+      False -> Error(Nil)
     }
   })
   |> list.length
+}
+
+pub fn is_safe_dampened(report: List(Int)) {
+  use <- bool.guard(is_safe(report), return: True)
+  use index <- list.any(list.range(0, list.length(report) - 1))
+  let #(_, remaining) =
+    report
+    |> list.index_map(fn(score, index) { #(index, score) })
+    |> list.key_pop(index)
+    |> result.unwrap(#(0, []))
+
+  remaining
+  |> list.map(fn(pair) { pair.1 })
+  |> is_safe
+}
+
+pub fn pt_2(input: String) {
+  input
+  |> utils.lines
+  |> list.map(fn(report) {
+    report
+    |> string.split(" ")
+    |> list.map(utils.parse_int)
+  })
+  |> list.count(is_safe_dampened)
 }
