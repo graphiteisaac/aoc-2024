@@ -2,3 +2,5 @@
 *.ez
 /build
 erl_crash.dump
+# Whoops, turns out you aren't meant to include this.
+input
