@@ -1,9 +1,6 @@
-import gleam/bool
 import gleam/dict
-import gleam/int
 import gleam/io
 import gleam/list
-import gleam/pair
 import gleam/result
 import gleam/string
 
@@ -24,9 +21,11 @@ pub type MapObject {
 pub type GuardMap =
   dict.Dict(#(Int, Int), MapObject)
 
-pub fn pt_1(input: GuardMap) {
-  input
-  |> mark_map
+pub fn pt_1(parsed_input: #(GuardMap, #(Int, Int))) {
+  let #(map, guard_start) = parsed_input
+
+  map
+  |> patrol_loop(guard_start)
   |> dict.to_list
   |> list.count(fn(x) {
     case x.1 {
@@ -36,47 +35,25 @@ pub fn pt_1(input: GuardMap) {
   })
 }
 
-pub fn pt_2(input: GuardMap) {
-  let lst =
-    input
-    |> mark_map
-    |> dict.filter(fn(_, x) {
+pub fn pt_2(parsed_input: #(GuardMap, #(Int, Int))) {
+  let #(map, guard_start) = parsed_input
+
+  map
+  |> patrol_loop(guard_start)
+  |> dict.filter(fn(pos, x) {
+    {
       x == Pathed(Up)
       || x == Pathed(Left)
       || x == Pathed(Right)
       || x == Pathed(Down)
-    })
-    |> dict.keys
-    |> list.unique
-
-//  let length = list.length(lst)
-  let guard_start =
-    input
-    |> dict.filter(fn(_, x) {
-      x == Guard(Up)
-      || x == Guard(Down)
-      || x == Guard(Left)
-      || x == Guard(Right)
-    })
-    |> dict.to_list
-    |> list.first
-    |> result.unwrap(#(#(0, 0), Guard(Up)))
-    |> pair.first
-
-  //io.debug(guard_start)
-
-  lst
-  |> list.fold(0, fn(accum, candidate) {
-    //io.debug(int.to_string(accum) <> " / " <> int.to_string(length))
-    case
-      mark_obstacle_map(
-        input |> dict.insert(candidate, Obstacle),
-        guard_start,
-        Up,
-      )
-    {
-      False -> accum
+    }
+    && pos != guard_start
+  })
+  |> dict.keys
+  |> list.fold(0, fn(accum, place) {
+    case patrol_loop_obstacles(dict.insert(map, place, Obstacle), guard_start) {
       True -> accum + 1
+      False -> accum
     }
   })
 }
@@ -99,11 +76,14 @@ fn next_coords(location: #(Int, Int), direction: GuardDirection) -> #(Int, Int) 
   }
 }
 
-fn mark_obstacle_map(
-  map: GuardMap,
-  guard_location: #(Int, Int),
-  direction: GuardDirection,
-) -> Bool {
+fn patrol_loop_obstacles(map: GuardMap, guard_location: #(Int, Int)) -> Bool {
+  let guard_tile = dict.get(map, guard_location) |> result.unwrap(Guard(Up))
+
+  let direction = case guard_tile {
+    Guard(dir) -> dir
+    _ -> Up
+  }
+
   let next_location_tile = next_coords(guard_location, direction)
 
   let map =
@@ -113,34 +93,37 @@ fn mark_obstacle_map(
   case dict.get(map, next_location_tile) {
     Ok(next_object) ->
       case next_object {
-        Pathed(dir) -> {
-          use <- bool.guard(dir == direction, return: True)
-          mark_obstacle_map(
-            map
-              |> dict.insert(next_location_tile, Guard(direction)),
-            next_location_tile,
-            direction,
-          )
-        }
+        Pathed(dir) ->
+          case dir == direction {
+            False ->
+              patrol_loop_obstacles(
+                map
+                  |> dict.insert(next_location_tile, Guard(direction)),
+                next_location_tile,
+              )
+            True -> True
+          }
 
         Clear ->
-          mark_obstacle_map(
+          patrol_loop_obstacles(
             map
               |> dict.insert(next_location_tile, Guard(direction)),
             next_location_tile,
-            direction,
           )
 
         Obstacle -> {
           let new_direction = redirect_guard(direction)
           let next_location = next_coords(guard_location, new_direction)
 
-          mark_obstacle_map(
-            map
-              |> dict.insert(next_location, Guard(new_direction)),
-            next_location,
-            new_direction,
-          )
+          case dict.get(map, next_location) {
+            Ok(Obstacle) -> True
+            Ok(_) | _ ->
+              patrol_loop_obstacles(
+                map
+                  |> dict.insert(next_location, Guard(new_direction)),
+                next_location,
+              )
+          }
         }
         _ -> False
       }
@@ -148,45 +131,38 @@ fn mark_obstacle_map(
   }
 }
 
-fn mark_map(map: GuardMap) -> GuardMap {
-  let guard_location =
-    dict.filter(map, fn(_, x) {
-      case x {
-        Guard(_) -> True
-        _ -> False
-      }
-    })
-    |> dict.to_list
-    |> list.first
-    |> result.unwrap(#(#(0, 0), Guard(Up)))
+fn patrol_loop(map: GuardMap, guard_location: #(Int, Int)) -> GuardMap {
+  let guard_tile = dict.get(map, guard_location) |> result.unwrap(Guard(Up))
 
-  let direction = case guard_location.1 {
+  let direction = case guard_tile {
     Guard(dir) -> dir
     _ -> Up
   }
 
-  let next_location_tile = next_coords(guard_location.0, direction)
+  let next_location_tile = next_coords(guard_location, direction)
 
   let map =
     map
-    |> dict.insert(guard_location.0, Pathed(direction))
+    |> dict.insert(guard_location, Pathed(direction))
 
   case dict.get(map, next_location_tile) {
     Ok(next_object) ->
       case next_object {
         Clear | Pathed(_) ->
-          mark_map(
+          patrol_loop(
             map
-            |> dict.insert(next_location_tile, Guard(direction)),
+              |> dict.insert(next_location_tile, Guard(direction)),
+            next_location_tile,
           )
 
         Obstacle -> {
           let new_direction = redirect_guard(direction)
-          let next_location = next_coords(guard_location.0, new_direction)
+          let next_location = next_coords(guard_location, new_direction)
 
-          mark_map(
+          patrol_loop(
             map
-            |> dict.insert(next_location, Guard(new_direction)),
+              |> dict.insert(next_location, Guard(new_direction)),
+            next_location,
           )
         }
         _ -> map
@@ -195,7 +171,7 @@ fn mark_map(map: GuardMap) -> GuardMap {
   }
 }
 
-pub fn parse(input: String) -> GuardMap {
+pub fn parse(input: String) -> #(GuardMap, #(Int, Int)) {
   let positions =
     {
       use line, row <- list.index_map(string.split(input, "\n"))
@@ -215,5 +191,17 @@ pub fn parse(input: String) -> GuardMap {
       dict.insert(accum, #(row, col), char)
     })
 
-  positions
+  let starting_pos =
+    positions
+    |> dict.filter(fn(_, sort) {
+      sort == Guard(Up)
+      || sort == Guard(Down)
+      || sort == Guard(Left)
+      || sort == Guard(Right)
+    })
+    |> dict.keys
+    |> list.first
+    |> result.unwrap(#(0, 0))
+
+  #(positions, starting_pos)
 }
